@@ -122,7 +122,7 @@ fn get_feeds_from_sql(sqlite_file: &str) -> Result<Vec<Podcast>, Box<dyn Error>>
                                             WHERE url NOT LIKE 'https://anchor.fm%' \
                                               AND newestItemPubdate > {} \
                                             ORDER BY id DESC \
-                                            LIMIT 1", since_time);
+                                            LIMIT 200", since_time);
             let stmt = sql.prepare(sql_text.as_str());
             match stmt {
                 Ok(mut dbresults) => {
@@ -220,6 +220,10 @@ async fn check_feed_is_updated(url: &str, etag: &str, last_update: i64, feed_id:
                 return Ok(false);
             }
 
+            if response_http_status == 301 {
+
+            }
+
             //Change detection using headers
             for (key,val) in res.headers().into_iter() {
                 if key == "last-modified" {
@@ -236,10 +240,10 @@ async fn check_feed_is_updated(url: &str, etag: &str, last_update: i64, feed_id:
             //Body returned
             if response_http_status == 200 {
                 let body = res.text_with_charset("utf-8").await?; //TODO: handle errors
-                let file_name = format!("{}_{}.txt", feed_id, response_http_status);
+                let file_name = format!("feeds/{}_{}.txt", feed_id, response_http_status);
                 let mut feed_file = File::create(file_name)?;
                 feed_file.write_all(body.as_bytes())?;
-                println!("{}", body);
+                println!("  - Body downloaded.");
                 Ok(true)
             } else {
                 Ok(false)
