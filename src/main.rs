@@ -53,22 +53,6 @@ async fn main() {
     let podcasts = get_feeds_from_sql(sqlite_file);
     match podcasts {
         Ok(podcasts) => {
-            // for podcast in podcasts {
-            //     println!("-----------------------");
-            //     println!("{:#?}|{:#?}|{:#?}|{:#?}", podcast.id, podcast.url, podcast.title, podcast.last_update);
-            //     match check_feed_is_updated(podcast.url.as_str(), podcast.etag.as_str(), podcast.last_update) {
-            //         Ok(updated) => {
-            //             if updated {
-            //                 println!("  Podcast: [{}] updated.", podcast.url);
-            //             } else {
-            //                 println!("  Podcast: [{}] NOT updated.", podcast.url);
-            //             }
-            //         },
-            //         Err(e) => {
-            //             eprintln!("Error checking feed: {:?}", e);
-            //         }
-            //     };
-            // }
             fetch_feeds(podcasts).await;
         },
         Err(e) => println!("{}", e),
@@ -122,7 +106,7 @@ fn get_feeds_from_sql(sqlite_file: &str) -> Result<Vec<Podcast>, Box<dyn Error>>
                                             WHERE url NOT LIKE 'https://anchor.fm%' \
                                               AND newestItemPubdate > {} \
                                             ORDER BY id DESC \
-                                            LIMIT 200", since_time);
+                                            LIMIT 500", since_time);
             let stmt = sql.prepare(sql_text.as_str());
             match stmt {
                 Ok(mut dbresults) => {
