@@ -54,7 +54,7 @@ impl Error for HydraError {}
 async fn main() {
     //Globals
     //let pi_database_url: &str = "https://cloudflare-ipfs.com/ipns/k51qzi5uqu5dkde1r01kchnaieukg7xy9i6eu78kk3mm3vaa690oaotk1px6wo/podcastindex_feeds.db.tgz";
-    let sqlite_file: &str = "podcastindex_feeds.db";
+    let sqlite_file: &str = "feed_poller_queue.db";
 
     //Fetch urls
     let podcasts = get_feeds_from_sql(sqlite_file);
@@ -103,7 +103,7 @@ fn get_feeds_from_sql(sqlite_file: &str) -> Result<Vec<Podcast>, Box<dyn Error>>
     let mut podcasts: Vec<Podcast> = Vec::new();
 
     //Restrict to feeds that have updated in a reasonable amount of time
-    let since_time: u64 = match SystemTime::now().duration_since(UNIX_EPOCH) {
+    let _since_time: u64 = match SystemTime::now().duration_since(UNIX_EPOCH) {
         Ok(n) => n.as_secs() - (86400 * 90),
         Err(_) => panic!("SystemTime before UNIX EPOCH!"),
     };
@@ -115,12 +115,13 @@ fn get_feeds_from_sql(sqlite_file: &str) -> Result<Vec<Podcast>, Box<dyn Error>>
             println!("----- Got some podcasts. -----\n");
 
             //Run the query and store the result
-            let sql_text: String = format!("SELECT id, url, title, lastUpdate, etag \
+            let sql_text: String = format!("SELECT id, \
+                                                   url, \
+                                                   title, \
+                                                   lastupdate, \
+                                                   etag \
                                             FROM podcasts \
-                                            WHERE url NOT LIKE 'https://anchor.fm%' \
-                                              AND newestItemPubdate > {} \
-                                            ORDER BY id ASC \
-                                            LIMIT 5", since_time);
+                                            ORDER BY id ASC");
             let stmt = sql.prepare(sql_text.as_str());
             match stmt {
                 Ok(mut dbresults) => {
@@ -235,8 +236,8 @@ async fn check_feed_is_updated(url: &str, etag: &str, last_update: u64, feed_id:
                 let body = res.text_with_charset("utf-8").await?; //TODO: handle errors
                 let file_name = format!("feeds/{}_{}.txt", feed_id, response_http_status);
                 let mut feed_file = File::create(file_name)?;
-                feed_file.write_all(format!("{}\n", r_modified).as_bytes());
-                feed_file.write_all(format!("{}\n", r_etag).as_bytes());
+                feed_file.write_all(format!("{}\n", r_modified).as_bytes())?;
+                feed_file.write_all(format!("{}\n", r_etag).as_bytes())?;
                 feed_file.write_all(body.as_bytes())?;
                 println!("  - Body downloaded.");
                 Ok(true)
