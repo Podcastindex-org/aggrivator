@@ -8,6 +8,13 @@ that is less tightly coupled to the database.
 
 ## Worklog
 
+alpha - v0.0.4
+ - Handles redirects now by dropping a stub file for 301's and 308's with the new url in it
+ - A lot of error handling
+ - Split file writing into it's own function
+ - Added a url line as the 3rd line in each feed file
+ - Writes files for 4xx and 5xx errors also
+
 alpha - v0.0.2
  - Writing feed files to disk as "feeds/[feedid]_[httpstatus].txt"
  - The first line of the feed file is the last-modified header

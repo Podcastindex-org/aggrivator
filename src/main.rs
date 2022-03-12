@@ -7,24 +7,25 @@ use std::error::Error;
 use std::fmt;
 use std::fs::File;
 use std::io::Write;
-use std::time::{ SystemTime, UNIX_EPOCH };
-use rusqlite::{ Connection };
-use reqwest::header;
+use std::time::{SystemTime, UNIX_EPOCH};
+use rusqlite::{Connection};
+use reqwest::{header, redirect};
 use futures::StreamExt;
 use chrono::NaiveDateTime;
 use httpdate;
 
 
-
 //##: Global definitions
-static USERAGENT: &str = "Aggrivator (PodcastIndex.org)/v0.1-alpha[dave@podcastindex.org]";
+static USERAGENT: &str = "Aggrivator (PodcastIndex.org)/v0.0.4-alpha";
+
 struct Podcast {
     id: u64,
     url: String,
     title: String,
     last_update: u64,
-    etag: String
+    etag: String,
 }
+
 #[derive(Debug)]
 struct HydraError(String);
 
@@ -36,7 +37,7 @@ struct PodcastCheckResult {
     status_code: u16,
     last_modified_string: String,
     last_modified_timestamp: u64,
-    etag: String
+    etag: String,
 }
 
 //##: Implement
@@ -45,6 +46,7 @@ impl fmt::Display for HydraError {
         write!(f, "Fatal error: {}", self.0)
     }
 }
+
 impl Error for HydraError {}
 
 
@@ -61,14 +63,10 @@ async fn main() {
     match podcasts {
         Ok(podcasts) => {
             match fetch_feeds(podcasts).await {
-                Ok(_) => {
-
-                },
-                Err(_) => {
-
-                }
+                Ok(_) => {}
+                Err(_) => {}
             }
-        },
+        }
         Err(e) => println!("{}", e),
     }
 }
@@ -121,7 +119,7 @@ fn get_feeds_from_sql(sqlite_file: &str) -> Result<Vec<Podcast>, Box<dyn Error>>
                                                    lastupdate, \
                                                    etag \
                                             FROM podcasts \
-                                            ORDER BY id ASC");
+                                            ORDER BY id ASC LIMIT 1");
             let stmt = sql.prepare(sql_text.as_str());
             match stmt {
                 Ok(mut dbresults) => {
@@ -140,14 +138,14 @@ fn get_feeds_from_sql(sqlite_file: &str) -> Result<Vec<Podcast>, Box<dyn Error>>
                         let pod: Podcast = podcast.unwrap();
                         podcasts.push(pod);
                     }
-                },
+                }
                 Err(e) => return Err(Box::new(HydraError(format!("Error running SQL query: [{}]", e).into())))
             }
 
             //sql.close();
 
             return Ok(podcasts);
-        },
+        }
         Err(e) => return Err(Box::new(HydraError(format!("Error running SQL query: [{}]", e).into())))
     }
 }
@@ -177,36 +175,50 @@ async fn check_feed_is_updated(url: &str, etag: &str, last_update: u64, feed_id:
         headers.insert("If-None-Match", header::HeaderValue::from_str(etag).unwrap());
     }
 
+    //Custom redirect policy so we can intercept redirect requests
+    let feed_id2 = feed_id.clone();
+    let custom = redirect::Policy::custom(move |attempt| {
+        let status_code = attempt.status().as_u16();
+
+        //Bail out if we reach 10 or more redirects
+        if attempt.previous().len() > 9 {
+            return attempt.error("Error - Too many redirects");
+        }
+
+        //If this is a permanent redirect, drop a stub file so that the parser can come by later
+        //and pick up these url changes
+        if status_code == 301 || status_code == 308 {
+            if let Err(e) = write_feed_file(feed_id2, status_code, 0, "".to_string(), attempt.url().to_string(), &"".to_string()) {
+                eprintln!("Error writing redirect file: {:#?}", e);
+            }
+        }
+
+        //Keep going
+        attempt.follow()
+    });
+
     //Build the query client
-    let client = reqwest::Client::builder().default_headers(headers).build().unwrap();
+    let client = reqwest::Client::builder()
+        .default_headers(headers)
+        .redirect(custom)
+        .build()
+        .unwrap();
 
     //Send the request and display the results or the error
     let response = client.get(url).send().await;
+    println!("{:#?}", response);
     match response {
         Ok(res) => {
             println!("  Response Status: [{}]", res.status());
             let response_http_status = res.status().as_u16();
 
-            let mut r_etag = "".to_string();
+            //Default header values
+            let mut r_etag = "[[NO_ETAG]]".to_string();
             let mut r_modified = last_update;
-
-            //If a 304 was returned we know it's not changed
-            if response_http_status == 304 {
-                return Ok(false);
-            }
-
-            //Permanent redirect
-            if response_http_status == 301 {
-
-            }
-
-            //Temporary redirect
-            if response_http_status == 302 {
-
-            }
+            let r_url = res.url().to_string();
 
             //Change detection using headers
-            for (key,val) in res.headers().into_iter() {
+            for (key, val) in res.headers().into_iter() {
                 if key == "last-modified" && !val.is_empty() {
                     println!("  Last-Modified: {:#?}", val);
 
@@ -231,23 +243,77 @@ async fn check_feed_is_updated(url: &str, etag: &str, last_update: u64, feed_id:
                 }
             }
 
-            //Body returned
-            if response_http_status == 200 {
-                let body = res.text_with_charset("utf-8").await?; //TODO: handle errors
-                let file_name = format!("feeds/{}_{}.txt", feed_id, response_http_status);
-                let mut feed_file = File::create(file_name)?;
-                feed_file.write_all(format!("{}\n", r_modified).as_bytes())?;
-                feed_file.write_all(format!("{}\n", r_etag).as_bytes())?;
-                feed_file.write_all(body.as_bytes())?;
-                println!("  - Body downloaded.");
-                Ok(true)
-            } else {
-                Ok(false)
+            //Take appropriate action depending on the response status
+            let mut body = "".to_string();
+            match response_http_status {
+                //Standard OK (perhaps with a transform) - response body included
+                200 | 203 | 214 => {
+                    body = res.text_with_charset("utf-8").await?; //TODO: handle errors
+                    if let Err(e) = write_feed_file(feed_id, response_http_status, r_modified, r_etag, r_url, &body) {
+                        eprintln!("Error writing redirect file: {:#?}", e);
+                    }
+                    println!("  - Content downloaded.");
+                    return Ok(true);
+                },
+                //No content - no response body
+                204 => {
+                    if let Err(e) = write_feed_file(feed_id, response_http_status, r_modified, r_etag, r_url, &body) {
+                        eprintln!("Error writing redirect file: {:#?}", e);
+                    }
+                    println!("  - No content.");
+                    return Ok(true);
+                },
+                //Content not modified - no response body
+                304 => {
+                    if let Err(e) = write_feed_file(feed_id, response_http_status, r_modified, r_etag, r_url, &body) {
+                        eprintln!("Error writing redirect file: {:#?}", e);
+                    }
+                    println!("  - Content not modified.");
+                    return Ok(false);
+                },
+                //Request error - no response body
+                400..=499 => {
+                    if let Err(e) = write_feed_file(feed_id, response_http_status, r_modified, r_etag, r_url, &body) {
+                        eprintln!("Error writing redirect file: {:#?}", e);
+                    }
+                    println!("  - Request error.");
+                    return Ok(false);
+                },
+                //Server error - no response body
+                500..=999 => {
+                    if let Err(e) = write_feed_file(feed_id, response_http_status, r_modified, r_etag, r_url, &body) {
+                        eprintln!("Error writing redirect file: {:#?}", e);
+                    }
+                    println!("  - Server error.");
+                    return Ok(false);
+                },
+                //Something else that we don't handle
+                _ => {
+                    return Ok(false);
+                }
             }
-        },
+        }
         Err(e) => {
             eprintln!("Error: [{}]", e);
             return Err(Box::new(HydraError(format!("Error running SQL query: [{}]", e).into())));
         }
     }
+}
+
+
+//Write a feed file out to the filesystem with metadata and body
+fn write_feed_file(feed_id: u64, status_code: u16, r_modified: u64, r_etag: String, r_url: String, body: &String) -> Result<bool, Box<dyn Error>> {
+
+    //The filename is the feed id and the http response status
+    let file_name = format!("feeds/{}_{}.txt", feed_id, status_code);
+
+    //Create the file TODO: Needs error checking on these unwraps
+    let mut feed_file = File::create(file_name)?;
+    feed_file.write_all(format!("{}\n", r_modified).as_bytes())?;
+    feed_file.write_all(format!("{}\n", r_etag).as_bytes())?;
+    feed_file.write_all(format!("{}\n", r_url).as_bytes())?;
+    feed_file.write_all(body.as_bytes())?;
+
+
+    Ok(true)
 }
