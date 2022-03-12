@@ -119,7 +119,7 @@ fn get_feeds_from_sql(sqlite_file: &str) -> Result<Vec<Podcast>, Box<dyn Error>>
                                                    lastupdate, \
                                                    etag \
                                             FROM podcasts \
-                                            ORDER BY id ASC LIMIT 1");
+                                            ORDER BY id ASC");
             let stmt = sql.prepare(sql_text.as_str());
             match stmt {
                 Ok(mut dbresults) => {
@@ -206,7 +206,6 @@ async fn check_feed_is_updated(url: &str, etag: &str, last_update: u64, feed_id:
 
     //Send the request and display the results or the error
     let response = client.get(url).send().await;
-    println!("{:#?}", response);
     match response {
         Ok(res) => {
             println!("  Response Status: [{}]", res.status());
