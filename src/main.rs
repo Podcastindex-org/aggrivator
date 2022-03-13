@@ -22,6 +22,7 @@ struct Podcast {
     url: String,
     title: String,
     last_update: u64,
+    last_modified: u64,
     etag: String,
 }
 
@@ -77,7 +78,7 @@ async fn fetch_feeds(podcasts: Vec<Podcast>) -> Result<(), Box<dyn std::error::E
     let fetches = futures::stream::iter(
         podcasts.into_iter().map(|podcast| {
             async move {
-                match check_feed_is_updated(&podcast.url, &podcast.etag.as_str(), podcast.last_update, podcast.id).await {
+                match check_feed_is_updated(&podcast.url, &podcast.etag.as_str(), podcast.last_modified, podcast.id).await {
                     Ok(resp) => {
                         match resp {
                             true => println!("  Feed: [{}|{}|{}] is updated.", podcast.id, podcast.title, podcast.url),
@@ -116,6 +117,7 @@ fn get_feeds_from_sql(sqlite_file: &str) -> Result<Vec<Podcast>, Box<dyn Error>>
                                                    url, \
                                                    title, \
                                                    lastupdate, \
+                                                   lastmod, \
                                                    etag \
                                             FROM podcasts \
                                             ORDER BY id ASC");
@@ -128,7 +130,8 @@ fn get_feeds_from_sql(sqlite_file: &str) -> Result<Vec<Podcast>, Box<dyn Error>>
                             url: row.get(1).unwrap(),
                             title: row.get(2).unwrap(),
                             last_update: row.get(3).unwrap(),
-                            etag: row.get(4).unwrap(),
+                            last_modified: row.get(4).unwrap(),
+                            etag: row.get(5).unwrap(),
                         })
                     }).unwrap();
 
@@ -151,7 +154,7 @@ fn get_feeds_from_sql(sqlite_file: &str) -> Result<Vec<Podcast>, Box<dyn Error>>
 
 
 //##: Do a conditional request if possible, using the etag and last-modified values from the previous run
-async fn check_feed_is_updated(url: &str, etag: &str, last_update: u64, feed_id: u64) -> Result<bool, Box<dyn Error>> {
+async fn check_feed_is_updated(url: &str, etag: &str, last_modified: u64, feed_id: u64) -> Result<bool, Box<dyn Error>> {
     //let mut podcast_check_result: PodcastCheckResult;
 
     //Build the initial query headers
@@ -159,12 +162,12 @@ async fn check_feed_is_updated(url: &str, etag: &str, last_update: u64, feed_id:
     headers.insert("User-Agent", header::HeaderValue::from_static(USERAGENT));
 
     //Create an http header compatible timestamp value to send with the conditional request based on
-    //the `last_update` of the feed we're checking
-    if last_update > 0 {
-        let ts_secs = Duration::from_secs(last_update);
+    //the `last_modified` of the feed we're checking
+    if last_modified > 0 {
+        let ts_secs = Duration::from_secs(last_modified);
         let ts = SystemTime::UNIX_EPOCH.checked_add(ts_secs).unwrap();
         let if_modified_since_time = httpdate::fmt_http_date(ts);
-        println!("  [{}|{}] If-Modified-Since: {:?}", feed_id, last_update, if_modified_since_time);
+        println!("  [{}|{}] If-Modified-Since: {:?}", feed_id, last_modified, if_modified_since_time);
         headers.insert("If-Modified-Since", header::HeaderValue::from_str(if_modified_since_time.as_str()).unwrap());
     }
 
@@ -213,7 +216,7 @@ async fn check_feed_is_updated(url: &str, etag: &str, last_update: u64, feed_id:
 
             //Default header values
             let mut r_etag = "[[NO_ETAG]]".to_string();
-            let mut r_modified = last_update;
+            let mut r_modified = last_modified;
             let r_url = res.url().to_string();
 
             //Change detection using headers
