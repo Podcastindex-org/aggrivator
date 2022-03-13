@@ -7,16 +7,15 @@ use std::error::Error;
 use std::fmt;
 use std::fs::File;
 use std::io::Write;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{SystemTime, UNIX_EPOCH, Duration};
 use rusqlite::{Connection};
 use reqwest::{header, redirect};
 use futures::StreamExt;
-use chrono::NaiveDateTime;
 use httpdate;
 
 
 //##: Global definitions
-static USERAGENT: &str = "Aggrivator (PodcastIndex.org)/v0.0.4-alpha";
+static USERAGENT: &str = "Aggrivator (PodcastIndex.org)/v0.0.5-alpha";
 
 struct Podcast {
     id: u64,
@@ -162,8 +161,9 @@ async fn check_feed_is_updated(url: &str, etag: &str, last_update: u64, feed_id:
     //Create an http header compatible timestamp value to send with the conditional request based on
     //the `last_update` of the feed we're checking
     if last_update > 0 {
-        let dt = NaiveDateTime::from_timestamp(last_update as i64, 0);
-        let if_modified_since_time = dt.format("%a,%e %b %Y %H:%M:%S UTC").to_string();
+        let ts_secs = Duration::from_secs(last_update);
+        let ts = SystemTime::UNIX_EPOCH.checked_add(ts_secs).unwrap();
+        let if_modified_since_time = httpdate::fmt_http_date(ts);
         println!("  [{}|{}] If-Modified-Since: {:?}", feed_id, last_update, if_modified_since_time);
         headers.insert("If-Modified-Since", header::HeaderValue::from_str(if_modified_since_time.as_str()).unwrap());
     }

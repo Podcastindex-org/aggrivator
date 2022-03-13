@@ -8,6 +8,9 @@ that is less tightly coupled to the database.
 
 ## Worklog
 
+alpha - v0.0.5
+ - Changed up date building for sending in If-Modified-Since header
+
 alpha - v0.0.4
  - Handles redirects now by dropping a stub file for 301's and 308's with the new url in it
  - A lot of error handling
