@@ -164,7 +164,7 @@ async fn check_feed_is_updated(url: &str, etag: &str, last_update: u64, feed_id:
     if last_update > 0 {
         let dt = NaiveDateTime::from_timestamp(last_update as i64, 0);
         let if_modified_since_time = dt.format("%a,%e %b %Y %H:%M:%S UTC").to_string();
-        println!("  [{}] If-Modified-Since: {:?}", feed_id, if_modified_since_time);
+        println!("  [{}|{}] If-Modified-Since: {:?}", feed_id, last_update, if_modified_since_time);
         headers.insert("If-Modified-Since", header::HeaderValue::from_str(if_modified_since_time.as_str()).unwrap());
     }
 
