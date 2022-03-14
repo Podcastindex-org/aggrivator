@@ -191,7 +191,14 @@ async fn check_feed_is_updated(url: &str, etag: &str, last_modified: u64, feed_i
         //If this is a permanent redirect, drop a stub file so that the parser can come by later
         //and pick up these url changes
         if status_code == 301 || status_code == 308 {
-            if let Err(e) = write_feed_file(feed_id2, status_code, 0, "".to_string(), attempt.url().to_string(), &"".to_string()) {
+            if let Err(e) = write_feed_file(
+                feed_id2,
+                status_code,
+                0,
+                "".to_string(),
+                attempt.url().to_string(),
+                &"".to_string()
+            ) {
                 eprintln!("Error writing redirect file: {:#?}", e);
             }
         }
@@ -202,6 +209,9 @@ async fn check_feed_is_updated(url: &str, etag: &str, last_modified: u64, feed_i
 
     //Build the query client
     let client = reqwest::Client::builder()
+        .connect_timeout(Duration::from_secs(10))
+        .timeout(Duration::from_secs(30))
+        .pool_idle_timeout(Duration::from_secs(20))
         .default_headers(headers)
         .redirect(custom)
         .build()
@@ -304,7 +314,9 @@ async fn check_feed_is_updated(url: &str, etag: &str, last_modified: u64, feed_i
 
 
 //Write a feed file out to the filesystem with metadata and body
-fn write_feed_file(feed_id: u64, status_code: u16, r_modified: u64, r_etag: String, r_url: String, body: &String) -> Result<bool, Box<dyn Error>> {
+fn write_feed_file(feed_id: u64, status_code: u16, r_modified: u64, r_etag: String, r_url: String, body: &String)
+    -> Result<bool, Box<dyn Error>>
+{
 
     //The filename is the feed id and the http response status
     let file_name = format!("feeds/{}_{}.txt", feed_id, status_code);
