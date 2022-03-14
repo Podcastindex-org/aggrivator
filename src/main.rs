@@ -15,7 +15,7 @@ use httpdate;
 
 
 //##: Global definitions
-static USERAGENT: &str = "Aggrivator (PodcastIndex.org)/v0.0.5-alpha";
+static USERAGENT: &str = "Aggrivator (PodcastIndex.org)/v0.0.6-alpha";
 
 struct Podcast {
     id: u64,
@@ -318,6 +318,9 @@ fn write_feed_file(feed_id: u64, status_code: u16, r_modified: u64, r_etag: Stri
     -> Result<bool, Box<dyn Error>>
 {
 
+    //What time is it now
+    let now = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_secs();
+
     //The filename is the feed id and the http response status
     let file_name = format!("feeds/{}_{}.txt", feed_id, status_code);
 
@@ -326,6 +329,7 @@ fn write_feed_file(feed_id: u64, status_code: u16, r_modified: u64, r_etag: Stri
     feed_file.write_all(format!("{}\n", r_modified).as_bytes())?;
     feed_file.write_all(format!("{}\n", r_etag).as_bytes())?;
     feed_file.write_all(format!("{}\n", r_url).as_bytes())?;
+    feed_file.write_all(format!("{}\n", now).as_bytes())?;
     feed_file.write_all(body.as_bytes())?;
 
 

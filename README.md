@@ -8,6 +8,9 @@ that is less tightly coupled to the database.
 
 ## Worklog
 
+alpha - v0.0.6
+ - Added a timestamp to the file since it's faster this way than slowing down partytime for an fs.stat
+
 alpha - v0.0.5
  - Changed up date building for sending in If-Modified-Since header
 
