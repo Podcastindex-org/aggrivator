@@ -127,8 +127,8 @@ fn get_feeds_from_sql(sqlite_file: &str) -> Result<Vec<Podcast>, Box<dyn Error>>
                             id: row.get(0).unwrap(),
                             url: row.get(1).unwrap(),
                             title: row.get(2).unwrap(),
-                            last_modified: row.get(4).unwrap(),
-                            etag: row.get(5).unwrap(),
+                            last_modified: row.get(3).unwrap(),
+                            etag: row.get(4).unwrap(),
                         })
                     }).unwrap();
 
