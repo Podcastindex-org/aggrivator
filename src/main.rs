@@ -21,7 +21,6 @@ struct Podcast {
     id: u64,
     url: String,
     title: String,
-    last_update: u64,
     last_modified: u64,
     etag: String,
 }
@@ -116,7 +115,6 @@ fn get_feeds_from_sql(sqlite_file: &str) -> Result<Vec<Podcast>, Box<dyn Error>>
             let sql_text: String = format!("SELECT id, \
                                                    url, \
                                                    title, \
-                                                   lastupdate, \
                                                    lastmod, \
                                                    etag \
                                             FROM podcasts \
@@ -129,7 +127,6 @@ fn get_feeds_from_sql(sqlite_file: &str) -> Result<Vec<Podcast>, Box<dyn Error>>
                             id: row.get(0).unwrap(),
                             url: row.get(1).unwrap(),
                             title: row.get(2).unwrap(),
-                            last_update: row.get(3).unwrap(),
                             last_modified: row.get(4).unwrap(),
                             etag: row.get(5).unwrap(),
                         })
@@ -217,6 +214,12 @@ async fn check_feed_is_updated(url: &str, etag: &str, last_modified: u64, feed_i
         .build()
         .unwrap();
 
+    //Default response header values to use in case we can't get something during
+    //the request. These are safe fallbacks.
+    let mut r_etag = "[[NO_ETAG]]".to_string();
+    let mut r_modified = last_modified;
+    let mut r_url = url.to_string();
+
     //Send the request and display the results or the error
     let response = client.get(url).send().await;
     match response {
@@ -225,9 +228,9 @@ async fn check_feed_is_updated(url: &str, etag: &str, last_modified: u64, feed_i
             let response_http_status = res.status().as_u16();
 
             //Default header values
-            let mut r_etag = "[[NO_ETAG]]".to_string();
-            let mut r_modified = last_modified;
-            let r_url = res.url().to_string();
+            r_etag = "[[NO_ETAG]]".to_string();
+            r_modified = last_modified;
+            r_url = res.url().to_string();
 
             //Change detection using headers
             for (key, val) in res.headers().into_iter() {
@@ -262,7 +265,7 @@ async fn check_feed_is_updated(url: &str, etag: &str, last_modified: u64, feed_i
                 200 | 203 | 214 => {
                     body = res.text_with_charset("utf-8").await?; //TODO: handle errors
                     if let Err(e) = write_feed_file(feed_id, response_http_status, r_modified, r_etag, r_url, &body) {
-                        eprintln!("Error writing redirect file: {:#?}", e);
+                        eprintln!("Error writing OK feed file: {:#?}", e);
                     }
                     println!("  - Content downloaded.");
                     return Ok(true);
@@ -270,7 +273,7 @@ async fn check_feed_is_updated(url: &str, etag: &str, last_modified: u64, feed_i
                 //No content - no response body
                 204 => {
                     if let Err(e) = write_feed_file(feed_id, response_http_status, r_modified, r_etag, r_url, &body) {
-                        eprintln!("Error writing redirect file: {:#?}", e);
+                        eprintln!("Error writing 204 feed file: {:#?}", e);
                     }
                     println!("  - No content.");
                     return Ok(true);
@@ -278,7 +281,7 @@ async fn check_feed_is_updated(url: &str, etag: &str, last_modified: u64, feed_i
                 //Content not modified - no response body
                 304 => {
                     if let Err(e) = write_feed_file(feed_id, response_http_status, r_modified, r_etag, r_url, &body) {
-                        eprintln!("Error writing redirect file: {:#?}", e);
+                        eprintln!("Error writing 304 feed file: {:#?}", e);
                     }
                     println!("  - Content not modified.");
                     return Ok(false);
@@ -286,7 +289,7 @@ async fn check_feed_is_updated(url: &str, etag: &str, last_modified: u64, feed_i
                 //Request error - no response body
                 400..=499 => {
                     if let Err(e) = write_feed_file(feed_id, response_http_status, r_modified, r_etag, r_url, &body) {
-                        eprintln!("Error writing redirect file: {:#?}", e);
+                        eprintln!("Error writing client error feed file: {:#?}", e);
                     }
                     println!("  - Request error.");
                     return Ok(false);
@@ -294,7 +297,7 @@ async fn check_feed_is_updated(url: &str, etag: &str, last_modified: u64, feed_i
                 //Server error - no response body
                 500..=999 => {
                     if let Err(e) = write_feed_file(feed_id, response_http_status, r_modified, r_etag, r_url, &body) {
-                        eprintln!("Error writing redirect file: {:#?}", e);
+                        eprintln!("Error writing server feed file: {:#?}", e);
                     }
                     println!("  - Server error.");
                     return Ok(false);
@@ -307,7 +310,10 @@ async fn check_feed_is_updated(url: &str, etag: &str, last_modified: u64, feed_i
         }
         Err(e) => {
             eprintln!("Error: [{}]", e);
-            return Err(Box::new(HydraError(format!("Error running SQL query: [{}]", e).into())));
+            if let Err(e) = write_feed_file(feed_id, 666, r_modified, r_etag, r_url, &"".to_string()) {
+                eprintln!("Error writing connection error feed file: {:#?}", e);
+            }
+            return Err(Box::new(HydraError(format!("Error downloading feed: [{}]", e).into())));
         }
     }
 }
