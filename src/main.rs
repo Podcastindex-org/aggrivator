@@ -6,6 +6,7 @@ extern crate reqwest;
 use std::error::Error;
 use std::fmt;
 use std::fs::File;
+//use std::fs::create_dir;
 use std::io::Write;
 use std::time::{SystemTime, UNIX_EPOCH, Duration};
 use rusqlite::{Connection};
@@ -15,7 +16,11 @@ use httpdate;
 
 
 //##: Global definitions
-static USERAGENT: &str = "Aggrivator (PodcastIndex.org)/v0.0.6-alpha";
+static USERAGENT: &str = "Aggrivator (PodcastIndex.org)/v0.1.0-beta";
+//static DIR_FEED_FILES: &str = "feeds";
+//static DIR_REDIRECT_FILES: &str = "redirects";
+static ERRORCODE_GENERAL_DOWNLOAD_FAILURE: u16 = 667;
+static ERRORCODE_GENERAL_CONNECTION_FAILURE: u16 = 666;
 
 struct Podcast {
     id: u64,
@@ -54,8 +59,14 @@ impl Error for HydraError {}
 #[tokio::main]
 async fn main() {
     //Globals
-    //let pi_database_url: &str = "https://cloudflare-ipfs.com/ipns/k51qzi5uqu5dkde1r01kchnaieukg7xy9i6eu78kk3mm3vaa690oaotk1px6wo/podcastindex_feeds.db.tgz";
     let sqlite_file: &str = "feed_poller_queue.db";
+
+    //Make sure folders we need exist.
+    // TODO: need env and error intelligence for containerizing
+    // match create_dir(DIR_FEED_FILES) {
+    //     Ok()
+    // }
+    // create_dir(DIR_REDIRECT_FILES)?;
 
     //Fetch urls
     let podcasts = get_feeds_from_sql(sqlite_file);
@@ -84,7 +95,19 @@ async fn fetch_feeds(podcasts: Vec<Podcast>) -> Result<(), Box<dyn std::error::E
                             false => println!("  Feed: [{}|{}|{}] is NOT updated.", podcast.id, podcast.title, podcast.url),
                         }
                     }
-                    Err(e) => println!("ERROR downloading: [{}], {:#?}", podcast.url, e),
+                    Err(e) => {
+                        println!("ERROR downloading: [{}], {:#?}", podcast.url, e);
+                        if let Err(e) = write_feed_file(
+                            podcast.id,
+                            ERRORCODE_GENERAL_DOWNLOAD_FAILURE,
+                            0,
+                            "".to_string(),
+                            podcast.url,
+                            &"".to_string()
+                        ) {
+                            eprintln!("Error writing download error feed file: {:#?}", e);
+                        }
+                    },
                 }
             }
         })
@@ -310,7 +333,14 @@ async fn check_feed_is_updated(url: &str, etag: &str, last_modified: u64, feed_i
         }
         Err(e) => {
             eprintln!("Error: [{}]", e);
-            if let Err(e) = write_feed_file(feed_id, 666, r_modified, r_etag, r_url, &"".to_string()) {
+            if let Err(e) = write_feed_file(
+                feed_id,
+                ERRORCODE_GENERAL_CONNECTION_FAILURE,
+                r_modified,
+                r_etag,
+                r_url,
+                &"".to_string()
+            ) {
                 eprintln!("Error writing connection error feed file: {:#?}", e);
             }
             return Err(Box::new(HydraError(format!("Error downloading feed: [{}]", e).into())));
@@ -327,8 +357,14 @@ fn write_feed_file(feed_id: u64, status_code: u16, r_modified: u64, r_etag: Stri
     //What time is it now
     let now = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_secs();
 
+    //What directory to place this file in
+    let mut directory = "feeds";
+    if status_code == 301 || status_code == 308 {
+        directory = "redirects";
+    }
+
     //The filename is the feed id and the http response status
-    let file_name = format!("feeds/{}_{}.txt", feed_id, status_code);
+    let file_name = format!("{}/{}_{}.txt", directory, feed_id, status_code);
 
     //Create the file TODO: Needs error checking on these unwraps
     let mut feed_file = File::create(file_name)?;

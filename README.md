@@ -8,6 +8,9 @@ that is less tightly coupled to the database.
 
 ## Worklog
 
+beta - v0.1.0
+ - Including a dummy sqlite db for testing purposes
+
 alpha - v0.0.6
  - Added a timestamp to the file since it's faster this way than slowing down partytime for an fs.stat
 
