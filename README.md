@@ -8,6 +8,9 @@ that is less tightly coupled to the database.
 
 ## Worklog
 
+beta - v0.1.1
+ - Handle very large responses by setting them as an error code (668)
+
 beta - v0.1.0
  - Including a dummy sqlite db for testing purposes
 

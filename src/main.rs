@@ -16,9 +16,11 @@ use httpdate;
 
 
 //##: Global definitions
-static USERAGENT: &str = "Aggrivator (PodcastIndex.org)/v0.1.0-beta";
+static USERAGENT: &str = "Aggrivator (PodcastIndex.org)/v0.1.1-beta";
+static MAX_BODY_LENGTH: usize = 20971520;
 //static DIR_FEED_FILES: &str = "feeds";
 //static DIR_REDIRECT_FILES: &str = "redirects";
+static ERRORCODE_GENERAL_FILE_SIZE_EXCEEDED: u16 = 668;
 static ERRORCODE_GENERAL_DOWNLOAD_FAILURE: u16 = 667;
 static ERRORCODE_GENERAL_CONNECTION_FAILURE: u16 = 666;
 
@@ -353,18 +355,25 @@ async fn check_feed_is_updated(url: &str, etag: &str, last_modified: u64, feed_i
 fn write_feed_file(feed_id: u64, status_code: u16, r_modified: u64, r_etag: String, r_url: String, body: &String)
     -> Result<bool, Box<dyn Error>>
 {
+    //Holds the current status code, which can change later
+    let mut status_code_prefix = status_code;
 
     //What time is it now
     let now = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_secs();
 
+    //If the body exceeds the maximum we're willing to handle, rename the file as an error code file
+    if body.len() > MAX_BODY_LENGTH {
+        status_code_prefix = ERRORCODE_GENERAL_FILE_SIZE_EXCEEDED;
+    }
+
     //What directory to place this file in
     let mut directory = "feeds";
-    if status_code == 301 || status_code == 308 {
+    if status_code_prefix == 301 || status_code_prefix == 308 {
         directory = "redirects";
     }
 
     //The filename is the feed id and the http response status
-    let file_name = format!("{}/{}_{}.txt", directory, feed_id, status_code);
+    let file_name = format!("{}/{}_{}.txt", directory, feed_id, status_code_prefix);
 
     //Create the file TODO: Needs error checking on these unwraps
     let mut feed_file = File::create(file_name)?;
@@ -372,7 +381,11 @@ fn write_feed_file(feed_id: u64, status_code: u16, r_modified: u64, r_etag: Stri
     feed_file.write_all(format!("{}\n", r_etag).as_bytes())?;
     feed_file.write_all(format!("{}\n", r_url).as_bytes())?;
     feed_file.write_all(format!("{}\n", now).as_bytes())?;
-    feed_file.write_all(body.as_bytes())?;
+
+    //If the body was too long, don't write it
+    if status_code_prefix != ERRORCODE_GENERAL_FILE_SIZE_EXCEEDED {
+        feed_file.write_all(body.as_bytes())?;
+    }
 
 
     Ok(true)
