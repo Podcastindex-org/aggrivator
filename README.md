@@ -8,6 +8,9 @@ that is less tightly coupled to the database.
 
 ## Worklog
 
+beta - v0.1.2
+ - File needs to be written even for unhandled status codes
+
 beta - v0.1.1
  - Handle very large responses by setting them as an error code (668)
 

@@ -16,13 +16,14 @@ use httpdate;
 
 
 //##: Global definitions
-static USERAGENT: &str = "Aggrivator (PodcastIndex.org)/v0.1.1-beta";
+static USERAGENT: &str = "Aggrivator (PodcastIndex.org)/v0.1.2-beta";
 static MAX_BODY_LENGTH: usize = 20971520;
 //static DIR_FEED_FILES: &str = "feeds";
 //static DIR_REDIRECT_FILES: &str = "redirects";
-static ERRORCODE_GENERAL_FILE_SIZE_EXCEEDED: u16 = 668;
-static ERRORCODE_GENERAL_DOWNLOAD_FAILURE: u16 = 667;
 static ERRORCODE_GENERAL_CONNECTION_FAILURE: u16 = 666;
+static ERRORCODE_GENERAL_DOWNLOAD_FAILURE: u16 = 667;
+static ERRORCODE_GENERAL_FILE_SIZE_EXCEEDED: u16 = 668;
+
 
 struct Podcast {
     id: u64,
@@ -329,6 +330,10 @@ async fn check_feed_is_updated(url: &str, etag: &str, last_modified: u64, feed_i
                 },
                 //Something else that we don't handle
                 _ => {
+                    if let Err(e) = write_feed_file(feed_id, response_http_status, r_modified, r_etag, r_url, &body) {
+                        eprintln!("Error writing server feed file: {:#?}", e);
+                    }
+                    println!("  - Unhandled status code.");
                     return Ok(false);
                 }
             }
@@ -362,7 +367,9 @@ fn write_feed_file(feed_id: u64, status_code: u16, r_modified: u64, r_etag: Stri
     let now = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_secs();
 
     //If the body exceeds the maximum we're willing to handle, rename the file as an error code file
-    if body.len() > MAX_BODY_LENGTH {
+    let body_length =  body.len();
+    println!("Body length: {}\n", body_length);
+    if body_length > MAX_BODY_LENGTH {
         status_code_prefix = ERRORCODE_GENERAL_FILE_SIZE_EXCEEDED;
     }
 
