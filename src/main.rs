@@ -15,14 +15,15 @@ use futures::StreamExt;
 use httpdate;
 
 
+
 //##: Global definitions
-static USERAGENT: &str = "Aggrivator (PodcastIndex.org)/v0.1.2-beta";
-static MAX_BODY_LENGTH: usize = 20971520;
+const USERAGENT: &str = concat!("Aggrivator (PodcastIndex.org)/v", env!("CARGO_PKG_VERSION"));
+const MAX_BODY_LENGTH: usize = 20971520;
 //static DIR_FEED_FILES: &str = "feeds";
 //static DIR_REDIRECT_FILES: &str = "redirects";
-static ERRORCODE_GENERAL_CONNECTION_FAILURE: u16 = 666;
-static ERRORCODE_GENERAL_DOWNLOAD_FAILURE: u16 = 667;
-static ERRORCODE_GENERAL_FILE_SIZE_EXCEEDED: u16 = 668;
+const ERRORCODE_GENERAL_CONNECTION_FAILURE: u16 = 666;
+const ERRORCODE_GENERAL_DOWNLOAD_FAILURE: u16 = 667;
+const ERRORCODE_GENERAL_FILE_SIZE_EXCEEDED: u16 = 668;
 
 
 struct Podcast {
@@ -70,6 +71,10 @@ async fn main() {
     //     Ok()
     // }
     // create_dir(DIR_REDIRECT_FILES)?;
+
+    //Announce what we are
+    println!("{}", USERAGENT);
+    println!("{}\n", "-".repeat(USERAGENT.len()));
 
     //Fetch urls
     let podcasts = get_feeds_from_sql(sqlite_file);

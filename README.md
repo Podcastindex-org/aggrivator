@@ -8,6 +8,10 @@ that is less tightly coupled to the database.
 
 ## Worklog
 
+v0.1.5
+ - Switched to Rustls-tls as the TLS library
+ - Some minor changes to version announcing
+
 beta - v0.1.2
  - File needs to be written even for unhandled status codes
 
