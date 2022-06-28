@@ -232,7 +232,7 @@ async fn check_feed_is_updated(url: &str, etag: &str, last_modified: u64, feed_i
 
     //Build the query client
     let client = reqwest::Client::builder()
-        .danger_accept_invalid_certs(true)
+        .use_rustls_tls()
         .connect_timeout(Duration::from_secs(10))
         .timeout(Duration::from_secs(30))
         .pool_idle_timeout(Duration::from_secs(20))
