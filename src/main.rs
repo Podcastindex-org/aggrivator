@@ -242,6 +242,7 @@ async fn check_feed_is_updated(url: &str, etag: &str, last_modified: u64, feed_i
         .timeout(Duration::from_secs(30))
         .pool_idle_timeout(Duration::from_secs(20))
         .default_headers(headers)
+        .gzip(true)
         .redirect(custom)
         .build()
         .unwrap();

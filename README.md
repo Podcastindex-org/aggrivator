@@ -1,12 +1,14 @@
 # Aggrivator
-The new polling agent for Podcast Index.
+The new feed polling agent for Podcast Index.
 
-This is a Rust rewrite of the aggrivate.js agent currently in production.  The intent is to create a fast, parrallel http polling binary
-that is less tightly coupled to the database.
-
+This parallel downloader can pull any sort of non-binary content from a url.  To use it, just load up
+the accompanying sqlite database with urls and run it.
 
 
 ## Worklog
+
+v0.1.6
+ - Added auto-gzip decompression since some misconfigured servers don't respect accept-encoding
 
 v0.1.5
  - Switched to Rustls-tls as the TLS library
