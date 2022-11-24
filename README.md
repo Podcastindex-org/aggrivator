@@ -7,6 +7,9 @@ the accompanying sqlite database with urls and run it.
 
 ## Worklog
 
+v0.1.7
+ - Increase maximum feed download size. Will move this to env in the future.
+
 v0.1.6
  - Added auto-gzip decompression since some misconfigured servers don't respect accept-encoding
 
