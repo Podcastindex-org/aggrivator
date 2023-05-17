@@ -18,7 +18,7 @@ use httpdate;
 
 //##: Global definitions
 const USERAGENT: &str = concat!("Aggrivator (PodcastIndex.org)/v", env!("CARGO_PKG_VERSION"));
-const MAX_BODY_LENGTH: usize = 30971520;
+const MAX_BODY_LENGTH: usize = 40971520;
 //static DIR_FEED_FILES: &str = "feeds";
 //static DIR_REDIRECT_FILES: &str = "redirects";
 const ERRORCODE_GENERAL_CONNECTION_FAILURE: u16 = 666;
@@ -238,7 +238,7 @@ async fn check_feed_is_updated(url: &str, etag: &str, last_modified: u64, feed_i
     //Build the query client
     let client = reqwest::Client::builder()
         .use_rustls_tls()
-        .connect_timeout(Duration::from_secs(10))
+        .connect_timeout(Duration::from_secs(20))
         .timeout(Duration::from_secs(30))
         .pool_idle_timeout(Duration::from_secs(20))
         .default_headers(headers)
