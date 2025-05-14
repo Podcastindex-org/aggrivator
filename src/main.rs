@@ -18,7 +18,8 @@ use httpdate;
 
 //##: Global definitions
 const USERAGENT: &str = concat!("Aggrivator (PodcastIndex.org)/v", env!("CARGO_PKG_VERSION"));
-const MAX_BODY_LENGTH: usize = 40971520;
+//70 megabytes
+const MAX_BODY_LENGTH: usize = 73400320; 
 //static DIR_FEED_FILES: &str = "feeds";
 //static DIR_REDIRECT_FILES: &str = "redirects";
 const ERRORCODE_GENERAL_CONNECTION_FAILURE: u16 = 666;

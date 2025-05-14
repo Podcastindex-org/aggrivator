@@ -7,6 +7,9 @@ the accompanying sqlite database with urls and run it.
 
 ## Worklog
 
+v0.1.8
+ - Increase max feed download size again. Still too lazy to make it run time adjustable.
+
 v0.1.7
  - Increase maximum feed download size. Will move this to env in the future.
 
