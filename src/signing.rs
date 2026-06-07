@@ -59,6 +59,74 @@ fn build_signature_base(authority: &str, sig_agent_quoted: &str, params: &str) -
     )
 }
 
+impl WebBotAuthSigner {
+    /// Load a PKCS#8 Ed25519 private key from a PEM file. Validates that
+    /// `signature_agent` is an `https://` URL and precomputes the keyid.
+    pub fn from_pem_file(
+        path: &str,
+        signature_agent: String,
+        ttl_secs: u64,
+    ) -> Result<Self, Box<dyn Error>> {
+        let pem = std::fs::read_to_string(path)?;
+        let signing_key = SigningKey::from_pkcs8_pem(&pem)?;
+        let parsed = Url::parse(&signature_agent)?;
+        if parsed.scheme() != "https" {
+            return Err(format!("signature agent must be https: {}", signature_agent).into());
+        }
+        let keyid = compute_keyid(signing_key.verifying_key().as_bytes());
+        Ok(Self {
+            signing_key,
+            keyid,
+            signature_agent,
+            ttl_secs,
+        })
+    }
+
+    pub fn keyid(&self) -> &str {
+        &self.keyid
+    }
+
+    /// Produce the three Web Bot Auth request headers for one request to `url`
+    /// signed at `now_unix` (Unix seconds).
+    pub fn sign(&self, url: &Url, now_unix: u64) -> [(HeaderName, HeaderValue); 3] {
+        let created = now_unix;
+        let expires = now_unix + self.ttl_secs;
+        let authority = authority_component(url);
+        let sig_agent_quoted = format!("\"{}\"", self.signature_agent);
+        let params = signature_params(&self.keyid, created, expires);
+        let base = build_signature_base(&authority, &sig_agent_quoted, &params);
+
+        let signature = self.signing_key.sign(base.as_bytes());
+        let sig_value = format!("sig1=:{}:", STANDARD.encode(signature.to_bytes()));
+        let input_value = format!("sig1={}", params);
+
+        [
+            (
+                HeaderName::from_static("signature-agent"),
+                HeaderValue::from_str(&sig_agent_quoted).expect("ascii signature-agent"),
+            ),
+            (
+                HeaderName::from_static("signature-input"),
+                HeaderValue::from_str(&input_value).expect("ascii signature-input"),
+            ),
+            (
+                HeaderName::from_static("signature"),
+                HeaderValue::from_str(&sig_value).expect("ascii signature"),
+            ),
+        ]
+    }
+
+    /// The JWKS directory contents to publish at the well-known path.
+    pub fn jwks(&self) -> serde_json::Value {
+        let x = URL_SAFE_NO_PAD.encode(self.signing_key.verifying_key().as_bytes());
+        serde_json::json!({
+            "keys": [
+                { "kty": "OKP", "crv": "Ed25519", "x": x, "kid": self.keyid, "use": "sig" }
+            ]
+        })
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -109,5 +177,55 @@ mod tests {
     fn authority_includes_non_default_port() {
         let url = Url::parse("https://example.com:8443/feed").unwrap();
         assert_eq!(authority_component(&url), "example.com:8443");
+    }
+
+    #[test]
+    fn sign_emits_verifiable_signature() {
+        use ed25519_dalek::{Signature, Verifier};
+        use rand_core::OsRng;
+        use std::convert::TryInto;
+
+        let signing_key = SigningKey::generate(&mut OsRng);
+        let verifying_key = signing_key.verifying_key();
+        let keyid = compute_keyid(verifying_key.as_bytes());
+        let signer = WebBotAuthSigner {
+            signing_key,
+            keyid,
+            signature_agent: "https://podcastindex.org".to_string(),
+            ttl_secs: 300,
+        };
+
+        let url = Url::parse("https://example.com/feed").unwrap();
+        let headers = signer.sign(&url, 1735689600);
+
+        let mut params = None;
+        let mut sig_b64 = None;
+        for (name, value) in &headers {
+            let v = value.to_str().unwrap();
+            match name.as_str() {
+                "signature-input" => params = Some(v.strip_prefix("sig1=").unwrap().to_string()),
+                "signature" => {
+                    sig_b64 = Some(
+                        v.strip_prefix("sig1=:")
+                            .unwrap()
+                            .strip_suffix(':')
+                            .unwrap()
+                            .to_string(),
+                    )
+                }
+                "signature-agent" => assert_eq!(v, "\"https://podcastindex.org\""),
+                other => panic!("unexpected header {}", other),
+            }
+        }
+
+        let base = build_signature_base(
+            "example.com",
+            "\"https://podcastindex.org\"",
+            &params.unwrap(),
+        );
+        let sig_bytes = STANDARD.decode(sig_b64.unwrap()).unwrap();
+        let sig_arr: [u8; 64] = sig_bytes.try_into().unwrap();
+        let sig = Signature::from_bytes(&sig_arr);
+        assert!(verifying_key.verify(base.as_bytes(), &sig).is_ok());
     }
 }
