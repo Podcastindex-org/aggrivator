@@ -12,6 +12,7 @@ use reqwest::Url;
 use sha2::{Digest, Sha256};
 
 /// Signs outbound HTTP requests for Cloudflare Web Bot Auth.
+#[derive(Debug)]
 pub struct WebBotAuthSigner {
     signing_key: SigningKey,
     keyid: String,
@@ -67,12 +68,17 @@ impl WebBotAuthSigner {
         signature_agent: String,
         ttl_secs: u64,
     ) -> Result<Self, Box<dyn Error>> {
-        let pem = std::fs::read_to_string(path)?;
-        let signing_key = SigningKey::from_pkcs8_pem(&pem)?;
+        // Validate the signature agent up front (before any I/O) so a successfully
+        // constructed signer can never fail when building request headers in `sign`.
         let parsed = Url::parse(&signature_agent)?;
         if parsed.scheme() != "https" {
             return Err(format!("signature agent must be https: {}", signature_agent).into());
         }
+        if !signature_agent.is_ascii() {
+            return Err(format!("signature agent must be ASCII: {}", signature_agent).into());
+        }
+        let pem = std::fs::read_to_string(path)?;
+        let signing_key = SigningKey::from_pkcs8_pem(&pem)?;
         let keyid = compute_keyid(signing_key.verifying_key().as_bytes());
         Ok(Self {
             signing_key,
@@ -90,7 +96,7 @@ impl WebBotAuthSigner {
     /// signed at `now_unix` (Unix seconds).
     pub fn sign(&self, url: &Url, now_unix: u64) -> [(HeaderName, HeaderValue); 3] {
         let created = now_unix;
-        let expires = now_unix + self.ttl_secs;
+        let expires = now_unix.saturating_add(self.ttl_secs);
         let authority = authority_component(url);
         let sig_agent_quoted = format!("\"{}\"", self.signature_agent);
         let params = signature_params(&self.keyid, created, expires);
@@ -227,5 +233,47 @@ mod tests {
         let sig_arr: [u8; 64] = sig_bytes.try_into().unwrap();
         let sig = Signature::from_bytes(&sig_arr);
         assert!(verifying_key.verify(base.as_bytes(), &sig).is_ok());
+    }
+
+    #[test]
+    fn from_pem_file_rejects_non_https_agent() {
+        let err = WebBotAuthSigner::from_pem_file(
+            "/nonexistent.pem",
+            "http://podcastindex.org".to_string(),
+            300,
+        )
+        .unwrap_err();
+        assert!(err.to_string().contains("https"));
+    }
+
+    #[test]
+    fn from_pem_file_rejects_non_ascii_agent() {
+        let err = WebBotAuthSigner::from_pem_file(
+            "/nonexistent.pem",
+            "https://exämple.org".to_string(),
+            300,
+        )
+        .unwrap_err();
+        assert!(err.to_string().contains("ASCII"));
+    }
+
+    #[test]
+    fn jwks_has_expected_fields() {
+        use rand_core::OsRng;
+        let signing_key = SigningKey::generate(&mut OsRng);
+        let keyid = compute_keyid(signing_key.verifying_key().as_bytes());
+        let signer = WebBotAuthSigner {
+            signing_key,
+            keyid: keyid.clone(),
+            signature_agent: "https://podcastindex.org".to_string(),
+            ttl_secs: 300,
+        };
+        let jwks = signer.jwks();
+        let key = &jwks["keys"][0];
+        assert_eq!(key["kty"], "OKP");
+        assert_eq!(key["crv"], "Ed25519");
+        assert_eq!(key["use"], "sig");
+        assert_eq!(key["kid"], keyid);
+        assert!(!key["x"].as_str().unwrap().is_empty());
     }
 }
