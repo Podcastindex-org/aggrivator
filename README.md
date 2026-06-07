@@ -7,6 +7,9 @@ the accompanying sqlite database with urls and run it.
 
 ## Worklog
 
+v0.1.9
+ - Send an Accept header advertising feed content types and add bot docs.
+
 v0.1.8
  - Increase max feed download size again. Still too lazy to make it run time adjustable.
 
