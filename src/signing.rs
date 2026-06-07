@@ -28,6 +28,17 @@ fn compute_keyid(public_key: &[u8; 32]) -> String {
     URL_SAFE_NO_PAD.encode(digest)
 }
 
+/// The RFC 9421 `@authority` derived component: lowercase host, plus the port
+/// only when it is non-default for the scheme. `Url::port()` already returns
+/// `None` for a scheme's default port (e.g. 443 for https).
+fn authority_component(url: &Url) -> String {
+    let host = url.host_str().unwrap_or("").to_lowercase();
+    match url.port() {
+        Some(port) => format!("{}:{}", host, port),
+        None => host,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -45,5 +56,17 @@ mod tests {
             compute_keyid(&pk),
             "kPrK_qmxVWaYVA9wwBF6Iuo3vVzz7TxHCTwXBygrS4k"
         );
+    }
+
+    #[test]
+    fn authority_lowercases_host_and_omits_default_port() {
+        let url = Url::parse("https://Example.COM/feed/podcast/").unwrap();
+        assert_eq!(authority_component(&url), "example.com");
+    }
+
+    #[test]
+    fn authority_includes_non_default_port() {
+        let url = Url::parse("https://example.com:8443/feed").unwrap();
+        assert_eq!(authority_component(&url), "example.com:8443");
     }
 }
