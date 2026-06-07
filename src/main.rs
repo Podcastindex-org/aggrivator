@@ -190,6 +190,14 @@ async fn check_feed_is_updated(url: &str, etag: &str, last_modified: u64, feed_i
     let mut headers = header::HeaderMap::new();
     headers.insert("User-Agent", header::HeaderValue::from_static(USERAGENT));
 
+    //Advertise the feed formats we actually want. Some origins/WAFs reject requests
+    //that send no Accept header (reqwest sends none by default) with a 415; a real
+    //browser always sends one. This won't defeat IP-based bot challenges, but it
+    //fixes feeds whose front-end requires a sane Accept.
+    headers.insert("Accept", header::HeaderValue::from_static(
+        "application/rss+xml, application/atom+xml, application/xml;q=0.9, text/xml;q=0.9, */*;q=0.8"
+    ));
+
     //Create an http header compatible timestamp value to send with the conditional request based on
     //the `last_modified` of the feed we're checking
     if last_modified > 0 {

@@ -1,0 +1,14 @@
+{
+  "_comment": "Authoritative source IP ranges for the Aggrivator crawler operated by Podcast Index (https://podcastindex.org). See BOT.md. Requests using the 'Aggrivator (PodcastIndex.org)/v*' User-Agent from any IP not listed here are not operated by Podcast Index.",
+  "prefixes": [
+    { "ipv4Prefix": "50.116.33.35/32" },
+    { "ipv4Prefix": "50.116.33.97/32" },
+    { "ipv4Prefix": "74.207.226.42/32" },
+    { "ipv4Prefix": "139.177.203.198/32" },
+    { "ipv4Prefix": "170.187.136.214/32" },
+    { "ipv4Prefix": "170.187.138.44/32" },
+    { "ipv4Prefix": "170.187.200.174/32" },
+    { "ipv4Prefix": "172.105.150.15/32" },
+    { "ipv4Prefix": "173.230.141.45/32" }
+  ]
+}
