@@ -39,9 +39,50 @@ fn authority_component(url: &Url) -> String {
     }
 }
 
+/// The RFC 9421 signature parameters string: the inner component list plus
+/// parameters, in a fixed canonical order. This exact string appears both in
+/// `Signature-Input` (after `sig1=`) and as the `@signature-params` value.
+fn signature_params(keyid: &str, created: u64, expires: u64) -> String {
+    format!(
+        "(\"@authority\" \"signature-agent\");created={};expires={};keyid=\"{}\";alg=\"ed25519\";tag=\"web-bot-auth\"",
+        created, expires, keyid
+    )
+}
+
+/// The RFC 9421 signature base: one line per covered component, then the
+/// `@signature-params` line. `sig_agent_quoted` is the structured-field string
+/// including its surrounding double quotes.
+fn build_signature_base(authority: &str, sig_agent_quoted: &str, params: &str) -> String {
+    format!(
+        "\"@authority\": {}\n\"signature-agent\": {}\n\"@signature-params\": {}",
+        authority, sig_agent_quoted, params
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    const KID: &str = "kPrK_qmxVWaYVA9wwBF6Iuo3vVzz7TxHCTwXBygrS4k";
+
+    #[test]
+    fn signature_params_exact() {
+        let params = signature_params(KID, 1735689600, 1735689900);
+        assert_eq!(
+            params,
+            "(\"@authority\" \"signature-agent\");created=1735689600;expires=1735689900;keyid=\"kPrK_qmxVWaYVA9wwBF6Iuo3vVzz7TxHCTwXBygrS4k\";alg=\"ed25519\";tag=\"web-bot-auth\""
+        );
+    }
+
+    #[test]
+    fn signature_base_exact() {
+        let params = signature_params(KID, 1735689600, 1735689900);
+        let base = build_signature_base("example.com", "\"https://podcastindex.org\"", &params);
+        let expected = "\"@authority\": example.com\n\
+\"signature-agent\": \"https://podcastindex.org\"\n\
+\"@signature-params\": (\"@authority\" \"signature-agent\");created=1735689600;expires=1735689900;keyid=\"kPrK_qmxVWaYVA9wwBF6Iuo3vVzz7TxHCTwXBygrS4k\";alg=\"ed25519\";tag=\"web-bot-auth\"";
+        assert_eq!(base, expected);
+    }
 
     // RFC 8037 Appendix A.3 test vector: the JWK thumbprint of the Ed25519
     // public key with x="11qYAYKxCrfVS_7TyWQHOg7hcvPapiMlrwIaaPcHURo".
