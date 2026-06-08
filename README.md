@@ -7,6 +7,9 @@ the accompanying sqlite database with urls and run it.
 
 ## Worklog
 
+v0.1.10
+ - Add optional Web Bot Auth request signing (RFC 9421 / Ed25519) so Cloudflare-protected feeds can verify the poller. Opt-in via AGGRIVATOR_SIGNING_KEY.
+
 v0.1.9
  - Send an Accept header advertising feed content types and add bot docs.
 
