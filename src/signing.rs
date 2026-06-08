@@ -41,12 +41,14 @@ fn authority_component(url: &Url) -> String {
 }
 
 /// The RFC 9421 signature parameters string: the inner component list plus
-/// parameters, in a fixed canonical order. This exact string appears both in
-/// `Signature-Input` (after `sig1=`) and as the `@signature-params` value.
+/// parameters, in the canonical order from the web-bot-auth draft worked example
+/// (created, keyid, alg, expires, tag). Verified byte-correct against Cloudflare's
+/// reference verifier. This exact string appears both in `Signature-Input` (after
+/// `sig1=`) and as the `@signature-params` value.
 fn signature_params(keyid: &str, created: u64, expires: u64) -> String {
     format!(
-        "(\"@authority\" \"signature-agent\");created={};expires={};keyid=\"{}\";alg=\"ed25519\";tag=\"web-bot-auth\"",
-        created, expires, keyid
+        "(\"@authority\" \"signature-agent\");created={};keyid=\"{}\";alg=\"ed25519\";expires={};tag=\"web-bot-auth\"",
+        created, keyid, expires
     )
 }
 
@@ -144,7 +146,7 @@ mod tests {
         let params = signature_params(KID, 1735689600, 1735689900);
         assert_eq!(
             params,
-            "(\"@authority\" \"signature-agent\");created=1735689600;expires=1735689900;keyid=\"kPrK_qmxVWaYVA9wwBF6Iuo3vVzz7TxHCTwXBygrS4k\";alg=\"ed25519\";tag=\"web-bot-auth\""
+            "(\"@authority\" \"signature-agent\");created=1735689600;keyid=\"kPrK_qmxVWaYVA9wwBF6Iuo3vVzz7TxHCTwXBygrS4k\";alg=\"ed25519\";expires=1735689900;tag=\"web-bot-auth\""
         );
     }
 
@@ -154,7 +156,7 @@ mod tests {
         let base = build_signature_base("example.com", "\"https://podcastindex.org\"", &params);
         let expected = "\"@authority\": example.com\n\
 \"signature-agent\": \"https://podcastindex.org\"\n\
-\"@signature-params\": (\"@authority\" \"signature-agent\");created=1735689600;expires=1735689900;keyid=\"kPrK_qmxVWaYVA9wwBF6Iuo3vVzz7TxHCTwXBygrS4k\";alg=\"ed25519\";tag=\"web-bot-auth\"";
+\"@signature-params\": (\"@authority\" \"signature-agent\");created=1735689600;keyid=\"kPrK_qmxVWaYVA9wwBF6Iuo3vVzz7TxHCTwXBygrS4k\";alg=\"ed25519\";expires=1735689900;tag=\"web-bot-auth\"";
         assert_eq!(base, expected);
     }
 
