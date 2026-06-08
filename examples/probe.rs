@@ -25,8 +25,9 @@
 //   UA                 override User-Agent (default = same as prod)
 
 use std::env;
-use std::time::Duration;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use reqwest::{header, redirect};
+use aggrivator::signing::WebBotAuthSigner;
 
 const DEFAULT_USERAGENT: &str = concat!("Aggrivator (PodcastIndex.org)/v", env!("CARGO_PKG_VERSION"));
 
@@ -86,7 +87,21 @@ async fn main() {
     println!("\nUser-Agent: {}", user_agent);
     println!("GET {}\n", url);
 
-    match client.get(&url).send().await {
+    let mut req = client.get(&url);
+    if let Ok(key_path) = env::var("SIGN_KEY") {
+        let agent = env::var("AGGRIVATOR_SIGNATURE_AGENT")
+            .unwrap_or_else(|_| "https://podcastindex.org".to_string());
+        let signer = WebBotAuthSigner::from_pem_file(&key_path, agent, 300)
+            .expect("load SIGN_KEY");
+        println!("  + Web Bot Auth signing (keyid={})", signer.keyid());
+        if let Ok(parsed) = reqwest::Url::parse(&url) {
+            let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
+            for (name, value) in signer.sign(&parsed, now) {
+                req = req.header(name, value);
+            }
+        }
+    }
+    match req.send().await {
         Ok(res) => {
             let status = res.status();
             let final_url = res.url().to_string();
