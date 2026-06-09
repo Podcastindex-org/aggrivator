@@ -13,6 +13,8 @@ use rusqlite::{Connection};
 use reqwest::{header, redirect};
 use futures::StreamExt;
 use httpdate;
+use std::sync::Arc;
+use aggrivator::signing::WebBotAuthSigner;
 
 
 
@@ -59,6 +61,38 @@ impl fmt::Display for HydraError {
 impl Error for HydraError {}
 
 
+//##: Build the optional Web Bot Auth signer from env config. Signing is opt-in:
+//##: if no key is configured or it fails to load, we run unsigned (as before).
+fn build_signer() -> Option<Arc<WebBotAuthSigner>> {
+    let key_path = match std::env::var("AGGRIVATOR_SIGNING_KEY") {
+        Ok(p) if !p.is_empty() => p,
+        _ => {
+            println!("Web Bot Auth signing disabled (AGGRIVATOR_SIGNING_KEY not set)");
+            return None;
+        }
+    };
+    let agent = std::env::var("AGGRIVATOR_SIGNATURE_AGENT")
+        .unwrap_or_else(|_| "https://podcastindex.org".to_string());
+    let ttl: u64 = std::env::var("AGGRIVATOR_SIGNATURE_TTL")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(300);
+    match WebBotAuthSigner::from_pem_file(&key_path, agent, ttl) {
+        Ok(signer) => {
+            println!("Web Bot Auth signing enabled (keyid={})", signer.keyid());
+            Some(Arc::new(signer))
+        }
+        Err(e) => {
+            eprintln!(
+                "Web Bot Auth signing disabled: failed to load key [{}]: {}",
+                key_path, e
+            );
+            None
+        }
+    }
+}
+
+
 //##: -------------------- Main() -----------------------
 //##: ---------------------------------------------------
 #[tokio::main]
@@ -78,10 +112,11 @@ async fn main() {
     println!("{}\n", "-".repeat(USERAGENT.len()));
 
     //Fetch urls
+    let signer = build_signer();
     let podcasts = get_feeds_from_sql(sqlite_file);
     match podcasts {
         Ok(podcasts) => {
-            match fetch_feeds(podcasts).await {
+            match fetch_feeds(podcasts, signer).await {
                 Ok(_) => {}
                 Err(_) => {}
             }
@@ -93,11 +128,15 @@ async fn main() {
 
 
 //##: Take in a vector of Podcasts and attempt to pull each one of them that is update
-async fn fetch_feeds(podcasts: Vec<Podcast>) -> Result<(), Box<dyn std::error::Error>> {
+async fn fetch_feeds(
+    podcasts: Vec<Podcast>,
+    signer: Option<Arc<WebBotAuthSigner>>,
+) -> Result<(), Box<dyn std::error::Error>> {
     let fetches = futures::stream::iter(
         podcasts.into_iter().map(|podcast| {
+            let signer = signer.clone();
             async move {
-                match check_feed_is_updated(&podcast.url, &podcast.etag.as_str(), podcast.last_modified, podcast.id).await {
+                match check_feed_is_updated(&podcast.url, &podcast.etag.as_str(), podcast.last_modified, podcast.id, signer.as_deref()).await {
                     Ok(resp) => {
                         match resp {
                             true => println!("  Feed: [{}|{}|{}] is updated.", podcast.id, podcast.title, podcast.url),
@@ -183,7 +222,7 @@ fn get_feeds_from_sql(sqlite_file: &str) -> Result<Vec<Podcast>, Box<dyn Error>>
 
 
 //##: Do a conditional request if possible, using the etag and last-modified values from the previous run
-async fn check_feed_is_updated(url: &str, etag: &str, last_modified: u64, feed_id: u64) -> Result<bool, Box<dyn Error>> {
+async fn check_feed_is_updated(url: &str, etag: &str, last_modified: u64, feed_id: u64, signer: Option<&WebBotAuthSigner>) -> Result<bool, Box<dyn Error>> {
     //let mut podcast_check_result: PodcastCheckResult;
 
     //Build the initial query headers
@@ -262,8 +301,20 @@ async fn check_feed_is_updated(url: &str, etag: &str, last_modified: u64, feed_i
     let mut r_modified = last_modified;
     let mut r_url = url.to_string();
 
-    //Send the request and display the results or the error
-    let response = client.get(url).send().await;
+    //Attach Web Bot Auth signature headers per-request (the signature binds the
+    //target @authority and a created/expires window, so it cannot be a client
+    //default header). On any error we simply send the request unsigned.
+    let mut req = client.get(url);
+    if let Some(signer) = signer {
+        if let Ok(parsed) = reqwest::Url::parse(url) {
+            if let Ok(now) = SystemTime::now().duration_since(UNIX_EPOCH) {
+                for (name, value) in signer.sign(&parsed, now.as_secs()) {
+                    req = req.header(name, value);
+                }
+            }
+        }
+    }
+    let response = req.send().await;
     match response {
         Ok(res) => {
             println!("  Response Status: [{}]", res.status());

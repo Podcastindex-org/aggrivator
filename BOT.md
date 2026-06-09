@@ -70,6 +70,22 @@ To confirm a request genuinely originates from Aggrivator, check that:
 The authoritative copy of `ips.json` lives in this repository and is served directly at the public URL
 above, so there is a single file to maintain — update `ips.json` whenever the egress addresses change.
 
+## Web Bot Auth (cryptographic verification)
+
+Aggrivator can cryptographically sign its requests using [Web Bot Auth](https://developers.cloudflare.com/bots/reference/bot-verification/web-bot-auth/)
+(RFC 9421 HTTP Message Signatures, Ed25519). Signed requests carry `Signature`, `Signature-Input`, and
+`Signature-Agent` headers, with `tag="web-bot-auth"` and a `keyid` that is the RFC 7638 JWK thumbprint
+of our published key.
+
+Our public signing key is published as a JSON Web Key Set at:
+
+```
+https://podcastindex.org/.well-known/http-message-signatures-directory
+```
+
+To verify a request: confirm the `User-Agent` matches `Aggrivator (PodcastIndex.org)/v*`, then verify the
+signature against the key whose thumbprint equals the request's `keyid`.
+
 ## Contact / abuse
 
 If Aggrivator is causing problems for your site, or you would like it to stop crawling a feed, please
