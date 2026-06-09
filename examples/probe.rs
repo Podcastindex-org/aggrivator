@@ -112,7 +112,14 @@ async fn main() {
                 println!("      {}: {}", k, v.to_str().unwrap_or("<binary>"));
             }
             match res.text().await {
-                Ok(body) => println!("\n==> Body length: {} bytes", body.len()),
+                Ok(body) => {
+                    println!("\n==> Body length: {} bytes", body.len());
+                    // Set SHOW_BODY=1 to print the response body (e.g. to read a
+                    // verifier's pass/fail verdict during end-to-end signing tests).
+                    if env::var("SHOW_BODY").is_ok() {
+                        println!("==> Body:\n{}", body);
+                    }
+                }
                 Err(e) => println!("\n==> Error reading body: {}", e),
             }
         }
