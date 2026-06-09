@@ -1,0 +1,5 @@
+# Normalize all text files to LF in the repository and on checkout.
+* text=auto eol=lf
+
+# Binary files must never be line-ending converted.
+*.db binary
