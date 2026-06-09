@@ -1,1 +1,5 @@
 /target
+
+# Web Bot Auth private signing keys — never commit these
+*.pem
+signing-key.pem
